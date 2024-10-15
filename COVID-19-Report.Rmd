@@ -1,0 +1,291 @@
+---
+title: "COVID-19 Data Analysis Report"
+author: "Jayanth Kumar Enugala"
+date: '10-10-2024'
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### Import Libraries
+
+```{r library, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(dplyr)
+library(scales)
+library(forecast)
+```
+
+## Introduction
+
+### Project Purpose: Analysis of COVID-19 Data from the Johns Hopkins
+
+This project aims to analyze the COVID-19 dataset from the Johns Hopkins GitHub repository to gain insights into the pandemic's progression and impact across different regions. By applying data science techniques, we seek to uncover patterns, trends, and relationships within the data.
+
+### Objectives
+
+- To clean and transform the raw COVID-19 data into a format suitable for analysis.
+- To create informative visualizations that highlight key aspects of the pandemic's spread and impact.
+- To develop a predictive model for COVID-19 cases or deaths.
+- To identify and discuss potential biases in the data and analysis.
+
+
+### Question of Interest
+
+- How does the case fatality rate (CFR) vary across different countries, and how has it changed over time?
+- Can we predict future COVID-19 cases for a specific country using time series forecasting?
+
+## Project Step 1: Describe and Import the Dataset
+
+### Data Description
+
+The dataset consists of four CSV files:
+- Global confirmed cases
+- Global deaths
+- US confirmed cases
+- US deaths
+
+These files contain time series data of COVID-19 cases and deaths, reported at various geographical levels (country, state/province, and county for the US).
+
+
+### Import Dataset
+
+```{r import_data, message=FALSE, warnings=FALSE}
+
+url_in <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/"
+
+file_names <- c(
+  "time_series_covid19_confirmed_global.csv",
+  "time_series_covid19_deaths_global.csv",
+  "time_series_covid19_confirmed_US.csv",
+  "time_series_covid19_deaths_US.csv"
+)
+
+urls <- str_c(url_in, file_names)
+
+global_cases <- read_csv(urls[1])
+global_deaths <- read_csv(urls[2])
+US_cases <- read_csv(urls[3])
+US_deaths <- read_csv(urls[4])
+
+```
+
+
+### Step 2: Tidy and Transform Data
+
+### Tidy Global Data
+
+```{r tidy_global_data}
+
+global_cases <- global_cases %>%
+  pivot_longer(cols = -c('Province/State', 'Country/Region', Lat, Long),
+               names_to = "date",
+               values_to = "cases")
+
+global_deaths <- global_deaths %>%
+  pivot_longer(cols = -c('Province/State', 'Country/Region', Lat, Long),
+               names_to = "date",
+               values_to = "deaths")
+
+global <- global_cases %>%
+  full_join(global_deaths) %>%
+  rename(Country_Region = 'Country/Region',
+         Province_State = 'Province/State') %>%
+  mutate(date = mdy(date))
+
+```
+
+### Tidy US Data
+
+```{r tidy_US_data}
+
+US_cases <- US_cases %>%
+  pivot_longer(cols = -(UID:Combined_Key),
+               names_to = "date",
+               values_to = "cases") %>%
+  select(Admin2:cases) %>%
+  mutate(date = mdy(date)) %>%
+  select(-c(Lat, Long_))
+
+US_deaths <- US_deaths %>%
+  pivot_longer(cols = -(UID:Population),
+               names_to = "date",
+               values_to = "deaths") %>%
+  select(Admin2:deaths) %>%
+  mutate(date = mdy(date)) %>%
+  select(-c(Lat, Long_))
+
+US <- US_cases %>%
+  full_join(US_deaths)
+
+```
+
+### Calculate global case fatality rate
+
+```{r tidy_Fatality_data}
+
+global_cfr <- global %>%
+  group_by(Country_Region, date) %>%
+  summarize(total_cases = sum(cases),
+            total_deaths = sum(deaths)) %>%
+  mutate(cfr = total_deaths / total_cases * 100) %>%
+  ungroup()
+
+```
+
+### Print summary statistics
+
+```{r print_summary_statistics}
+
+summary(global)
+summary(US)
+summary(global_cfr)
+
+```
+### Visualizations and Analysis
+
+### Calculate global average CFR
+
+
+```{r global_avg_CFR}
+
+global_avg_cfr <- global_cfr %>%
+  group_by(date) %>%
+  summarize(avg_cfr = mean(cfr, na.rm = TRUE))
+
+
+```
+
+### Plot global average CFR over time
+
+```{r global_avg_CFR_overtime}
+
+ggplot(global_avg_cfr, aes(x = date, y = avg_cfr)) +
+  geom_line(color = "blue") +
+  labs(title = "Global Average Case Fatality Rate Over Time",
+       x = "Date",
+       y = "Case Fatality Rate (%)") +
+  theme_minimal() +
+  scale_y_continuous(labels = scales::percent_format(scale = 1))
+
+```
+
+This visualization shows how the global average case fatality rate has changed over time. We can observe that the CFR was initially high at the beginning of the pandemic, likely due to limited testing and focus on severe cases. It then decreased and stabilized as testing became more widespread and treatment improved.
+
+
+### Case Fatality Rate Comparison Across Top 10 Countries
+
+### Get the latest CFR for top 10 countries by total cases
+
+```{r top_10_countries}
+
+top_10_countries <- global_cfr %>%
+  group_by(Country_Region) %>%
+  summarize(total_cases = max(total_cases),
+            latest_cfr = last(cfr)) %>%
+  arrange(desc(total_cases)) %>%
+  head(10)
+
+```
+
+```{r CFR_comparison}
+
+### Plot CFR comparison
+ggplot(top_10_countries, aes(x = reorder(Country_Region, -latest_cfr), y = latest_cfr)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  coord_flip() +
+  labs(title = "Case Fatality Rate Comparison Across Top 10 Countries by Total Cases",
+       x = "Country",
+       y = "Case Fatality Rate (%)") +
+  theme_minimal() +
+  scale_y_continuous(labels = scales::percent_format(scale = 1))
+
+```
+
+This visualization compares the case fatality rates across the top 10 countries by total cases. We can see significant variations in CFR among these countries, which could be due to factors such as healthcare system capacity, testing strategies, demographic differences, and reporting practices.
+
+### Time Series Forecasting for COVID-19 Cases in the United States
+
+### Prepare US data for forecasting
+
+```{r total_cases}
+
+us_total_cases <- US %>%
+  group_by(date) %>%
+  summarize(total_cases = sum(cases)) %>%
+  ungroup()
+
+
+```
+
+```{r times_series_object}
+
+### Create time series object
+us_ts <- ts(us_total_cases$total_cases, frequency = 7)
+
+```
+
+```{r ARIMA_Model}
+
+### Fit ARIMA model
+us_model <- auto.arima(us_ts)
+
+```
+
+```{r 30days_Forecast}
+
+### Generate forecast for the next 30 days
+us_forecast <- forecast(us_model, h = 30)
+
+```
+
+```{r Forecast_Plot}
+
+### Plot the forecast
+autoplot(us_forecast) +
+  labs(title = "30-Day Forecast of COVID-19 Cases in the United States",
+       x = "Time",
+       y = "Total Cases") +
+  theme_minimal()
+
+```
+
+```{r print_model}
+
+### Print model summary
+summary(us_model)
+
+```
+
+This ARIMA model provides a 30-day forecast of COVID-19 cases in the United States. The forecast shows the expected trend along with prediction intervals, giving us an idea of the potential range of future cases.
+
+  
+### Report Conclusion and Sources of Bias
+### Analysis of the COVID-19 dataset has revealed several insights:
+
+- The global case fatality rate has generally decreased over time, likely due to improved testing, treatment, and understanding of the virus.
+- There's a clear seasonal pattern with peaks in summer months and troughs in winter months across all boroughs.
+- There are significant variations in case fatality rates among countries, even among those with the highest number of cases.
+- The time series forecast for US cases shows a continuing upward trend, but with increasing uncertainty over time.
+
+### Sources of Bias:
+
+Several potential sources of bias should be considered when interpreting these results:
+
+- Reporting bias: Different countries have varying capacities and methods for testing and reporting COVID-19 cases and deaths. This can lead to under-reporting or inconsistent reporting across regions.
+- Testing bias: The number of confirmed cases is heavily dependent on testing capacity and policies, which have varied greatly across countries and over time.
+- Time lag bias: There's often a delay between infection, symptom onset, testing, and reporting, which can affect the accuracy of daily case counts and death reports.
+- Demographic bias: Our analysis doesn't account for demographic factors such as age distribution, underlying health conditions, or socioeconomic status, which can significantly impact COVID-19 outcomes.
+- Healthcare system bias: Differences in healthcare system capacity and quality across countries can affect both case detection and mortality rates.
+- Policy bias: Government interventions and policies (e.g., lockdowns, mask mandates) vary across regions and time, influencing the spread and impact of the virus.
+- Model simplification bias: Our time series model assumes that past trends will continue into the future and doesn't account for potential changes in virus behavior, human behavior, or interventions.
+- Data aggregation bias: By analyzing data at the country level, we may miss important local variations within countries.
+
+To mitigate these biases, future analyses could incorporate additional data sources, use more sophisticated modeling techniques, and consider a wider range of factors that influence COVID-19 spread and impact. It's crucial to interpret the results cautiously and in the context of these potential biases.

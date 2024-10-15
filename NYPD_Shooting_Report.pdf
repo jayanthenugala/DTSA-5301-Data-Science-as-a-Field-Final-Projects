@@ -1,0 +1,281 @@
+---
+title: "NYPD Shooting Report"
+author: "Jayanth Kumar Enugala"
+date: '10-12-2024'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### Import Libraries
+
+```{r library, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(scales)
+```
+
+## Introduction
+
+### Project Purpose: Analysis of NYPD Shooting Incident Data
+
+This project aims to demonstrate proficiency in the complete data science process, from data acquisition to analysis and reporting, using the New York Police Department (NYPD) Shooting Incident dataset. As a student undertaking this assignment, my goal is to showcase the ability to work with real-world data in a reproducible manner, applying various data science techniques to derive meaningful insights.
+
+### Objectives
+
+- To acquire and clean the NYPD Shooting Incident data
+- To perform exploratory data analysis (EDA) on the dataset
+- To develop and implement a unique analysis approach
+- To present findings through clear visualizations and interpretations
+- To ensure all steps are documented and reproducible
+
+### Question of Interest
+
+This analysis aims to explore temporal patterns in shooting incidents across New York City. Specifically, the question I intend to investigate is: Are there significant temporal trends in shooting incidents, and how do these patterns vary across different boroughs of New York City?
+
+This inquiry is driven by several key aspects:
+
+- To identify potential cyclical patterns in shooting incidents (daily, weekly, monthly, or yearly)
+- To compare and contrast temporal trends across different boroughs
+- To explore the possibility of using temporal data for predictive modeling of high-risk periods
+
+## Project Step 1: Describe and Import the Dataset
+
+### Data Description
+
+__NYPD Shooting Incident Data (Historic)__
+
+This is a breakdown of every shooting incident that occurred in NYC going back to 2006 through the end of the previous calendar year. This data is manually extracted every quarter and reviewed by the Office of Management Analysis and Planning before being posted on the NYPD website.
+
+__Source__ https://catalog.data.gov/dataset/nypd-shooting-incident-data-historic
+
+### Row Description
+
+- Each __row__ in this dataset is a __shooting incident__.
+
+### Column Description
+
+- __INCIDENT_KEY__: Randomly generated persistent ID for each arrest
+- __OCCUR_DATE__: The date when the shooting incident occurred
+- __OCCUR_TIME__: The time when the shooting incident occurred
+- __BORO__: The borough where the shooting incident occurred
+- __Latitude__: The latitude coordinate of the shooting incident lo
+- __Longitude__: The longitude coordinate of the shooting incident location
+- __LOC_OF_OCCUR_DESC__: Description of the location where the incident occurred
+- __PRECINCT__: The precinct number where the shooting incident occurred
+- __JURISDICTION_CODE__: Jurisdiction where the incident occurred
+- __LOC_CLASSFCTN_DESC__: Classification of the location type
+- __PERP_AGE_GROUP__: Age group of the perpetrator
+- __PERP_SEX__: Sex of the perpetrator
+- __PERP_RACE__: Race of the perpetrator
+- __VIC_AGE_GROUP__: Age group of the victim
+- __VIC_SEX__: Sex of the victim
+- __VIC_RACE__: Race of the victim
+- __X_COORD_CD__: X-coordinate for New York State Plane Coordinate System
+- __Y_COORD_CD__: Y-coordinate for New York State Plane Coordinate System
+
+### Import Dataset
+
+```{r import_data, message=FALSE, warnings=FALSE}
+
+url <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv"
+
+nypd_data <- read_csv(url)
+
+glimpse(nypd_data) # Glimpse prints every column in a data frame.
+```
+
+
+## Step 2: Tidy and Transform Data
+
+
+### Remove Unnecessary Columns
+
+The following columns are not needed: LOCATION_DESC, Lon_Lat
+
+```{r remove_columns}
+
+nypd_data <- nypd_data %>% select(-c(
+                      LOCATION_DESC,
+                      Lon_Lat
+                      ))
+
+
+```
+
+### Data preprocessing
+
+```{r dataprocessing}
+
+nypd_data <- nypd_data %>%
+  mutate(
+    OCCUR_DATE = mdy(OCCUR_DATE),
+    YEAR = year(OCCUR_DATE),
+    MONTH = month(OCCUR_DATE),
+    WEEKDAY = wday(OCCUR_DATE, label = TRUE),
+    HOUR = hour(OCCUR_TIME)
+  )
+
+### Display the structure of the transformed data
+print(head(nypd_data))
+
+```
+
+# Yearly trends
+
+```{r yearly_trends}
+
+yearly_trend <- nypd_data %>%
+  group_by(YEAR, BORO) %>%
+  summarise(Incidents = n(), .groups = 'drop')
+
+ggplot(yearly_trend, aes(x = YEAR, y = Incidents, color = BORO)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Yearly Trends of Shooting Incidents by Borough",
+       x = "Year", y = "Number of Incidents") +
+  theme_minimal()
+
+```
+
+The line graph shows varying trends across boroughs from 2006 to 2022. Brooklyn consistently has the highest number of incidents, followed by the Bronx. Manhattan and Queens show similar, lower levels of incidents, while Staten Island has the fewest. There's a notable decline in incidents across all boroughs from 2011 to 2019, followed by a sharp increase in 2020 and 2021.
+
+# Monthly patterns
+
+```{r Monthly_patterns}
+
+monthly_pattern <- nypd_data %>%
+  group_by(MONTH, BORO) %>%
+  summarise(Incidents = n(), .groups = 'drop')
+
+ggplot(monthly_pattern, aes(x = MONTH, y = Incidents, color = BORO)) +
+  geom_line() +
+  geom_point() +
+  scale_x_continuous(breaks = 1:12) +
+  labs(title = "Monthly Patterns of Shooting Incidents by Borough",
+       x = "Month", y = "Number of Incidents") +
+  theme_minimal()
+
+```
+
+All boroughs show a clear seasonal pattern with peaks in the summer months (July and August) and troughs in the winter months (February and March). This pattern is most pronounced in Brooklyn and the Bronx. The seasonal variation is less extreme in Manhattan and Queens.
+
+# Day of week patterns
+
+```{r Weekly_patterns}
+
+weekday_pattern <- nypd_data %>%
+  group_by(WEEKDAY, BORO) %>%
+  summarise(Incidents = n(), .groups = 'drop')
+
+ggplot(weekday_pattern, aes(x = WEEKDAY, y = Incidents, fill = BORO)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Day of Week Patterns of Shooting Incidents by Borough",
+       x = "Day of Week", y = "Number of Incidents") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+Weekends (Saturday and Sunday) consistently show higher incident rates across all boroughs. The increase is most notable in Brooklyn and the Bronx. Manhattan shows a unique pattern with a sharper increase on weekends compared to weekdays.
+
+# Hourly patterns
+
+```{r Hourly_patterns}
+
+hourly_pattern <- nypd_data %>%
+  group_by(HOUR, BORO) %>%
+  summarise(Incidents = n(), .groups = 'drop')
+
+ggplot(hourly_pattern, aes(x = HOUR, y = Incidents, color = BORO)) +
+  geom_line() +
+  scale_x_continuous(breaks = seq(0, 23, by = 3)) +
+  labs(title = "Hourly Patterns of Shooting Incidents by Borough",
+       x = "Hour of Day", y = "Number of Incidents") +
+  theme_minimal()
+
+```
+
+Incidents peak during late night and early morning hours (11 PM to 3 AM) across all boroughs. Brooklyn and the Bronx show the highest peaks during these hours. Manhattan has a more pronounced late-night peak compared to other boroughs, possibly reflecting its nightlife.
+
+# Chi-square test for association between borough and day of week
+
+```{r Chisquare_test}
+
+chi_square_result <- chisq.test(table(nypd_data$BORO, nypd_data$WEEKDAY))
+print(chi_square_result)
+
+```
+
+The test results show a p-value < 0.001, indicating a significant association between borough and day of the week. This suggests that the distribution of incidents across days varies significantly between boroughs.
+
+# Time series decomposition for the borough with the highest number of incidents
+
+```{r Time_Series}
+
+top_borough <- nypd_data %>%
+  group_by(BORO) %>%
+  summarise(Incidents = n()) %>%
+  arrange(desc(Incidents)) %>%
+  slice(1) %>%
+  pull(BORO)
+
+top_borough_ts <- nypd_data %>%
+  filter(BORO == top_borough) %>%
+  group_by(OCCUR_DATE) %>%
+  summarise(Incidents = n()) %>%
+  complete(OCCUR_DATE = seq.Date(min(OCCUR_DATE), max(OCCUR_DATE), by="day"), fill = list(Incidents = 0))
+
+ts_data <- ts(top_borough_ts$Incidents, frequency = 365)
+decomposed <- decompose(ts_data)
+
+plot(decomposed)
+
+```
+
+The trend component shows a gradual decrease from 2006 to 2019, followed by a sharp increase in 2020-2021. The seasonal component confirms the summer peaks observed in the monthly analysis. The residual component shows no clear pattern, suggesting the trend and seasonal components capture most of the variation.
+
+# Heatmap of incidents by hour and day of week
+
+```{r Heatmap}
+
+heatmap_data <- nypd_data %>%
+  mutate(WEEKDAY = factor(WEEKDAY, levels = c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"))) %>%
+  group_by(WEEKDAY, HOUR) %>%
+  summarise(Incidents = n(), .groups = 'drop')
+
+ggplot(heatmap_data, aes(x = HOUR, y = WEEKDAY, fill = Incidents)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "red") +
+  labs(title = "Heatmap of Shooting Incidents by Hour and Day of Week",
+       x = "Hour of Day", y = "Day of Week") +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(0, 23, by = 3))
+
+```
+
+The heatmap reveals that incidents are most frequent during late night hours (11 PM to 3 AM) on weekends across all boroughs. Weekday afternoons and early evenings show moderate incident levels, while early morning hours on weekdays have the lowest incident rates.
+
+### Report Conclusion and Sources of Bias
+### Conclusions:
+
+- Temporal patterns in shooting incidents vary significantly across New York City boroughs, but some common trends are evident.
+- There's a clear seasonal pattern with peaks in summer months and troughs in winter months across all boroughs.
+- Weekends consistently show higher incident rates than weekdays, particularly in Brooklyn and the Bronx.
+- Late night and early morning hours are the most high-risk times for shooting incidents across all boroughs.
+- Long-term trends show a decrease in incidents from 2011 to 2019, followed by a sharp increase in 2020-2021, possibly related to the COVID-19 pandemic and associated social changes.
+- Brooklyn and the Bronx consistently have higher incident rates compared to other boroughs, which may reflect differences in population density, socioeconomic factors, or policing strategies.
+
+### Sources of Bias:
+
+- Reporting Bias: There may be underreporting in certain areas or times, particularly for less severe incidents. This could skew the apparent patterns.
+- Demographic Bias: The analysis doesn't account for population density or demographics of different boroughs, which could influence incident rates.
+- Temporal Bias: The dataset's time range (2006-2022) may not capture very long-term trends or the most recent changes in policing or community dynamics.
+- Geographic Bias: Boroughs vary in size and population, which isn't accounted for in raw incident counts. Per capita rates might provide a different perspective.
+- Data Collection Bias: Changes in data collection methods, policing strategies, or reporting policies over the years could affect long-term trends without reflecting true changes in incident rates.
